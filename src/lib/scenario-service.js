@@ -4,7 +4,19 @@ import telnyx from '@/lib/telnyx'
 
 export async function findMatchingScenario(recipientNumber, senderNumber) {
   try {
-    // Find scenarios assigned to this recipient number (our number)
+    // First, find the phone number record by phone number string
+    const { data: phoneRecord, error: phoneRecordError } = await supabaseAdmin
+      .from('phone_numbers')
+      .select('id')
+      .eq('phone_number', recipientNumber)
+      .single()
+
+    if (phoneRecordError || !phoneRecord) {
+      console.log(`No phone number record found for ${recipientNumber}`)
+      return null
+    }
+
+    // Find scenarios assigned to this phone number ID
     const { data: scenarioPhoneNumbers, error: phoneError } = await supabaseAdmin
       .from('scenario_phone_numbers')
       .select(`
@@ -17,7 +29,7 @@ export async function findMatchingScenario(recipientNumber, senderNumber) {
           is_active
         )
       `)
-      .eq('phone_number_id', recipientNumber)
+      .eq('phone_number_id', phoneRecord.id)
       .eq('scenarios.is_active', true)
 
     if (phoneError) {
@@ -26,6 +38,7 @@ export async function findMatchingScenario(recipientNumber, senderNumber) {
     }
 
     if (!scenarioPhoneNumbers || scenarioPhoneNumbers.length === 0) {
+      console.log(`No active scenarios found for phone ${recipientNumber}`)
       return null
     }
 
