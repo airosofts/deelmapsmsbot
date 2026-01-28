@@ -67,6 +67,11 @@ export async function PATCH(request, { params }) {
     const user = getUserFromRequest(request)
     const workspace = getWorkspaceFromRequest(request)
 
+    console.log('PATCH - User and workspace context:', {
+      user: user ? { userId: user.userId } : null,
+      workspace: workspace
+    })
+
     if (!user || !workspace) {
       return NextResponse.json(
         { error: 'Unauthorized' },
@@ -74,9 +79,29 @@ export async function PATCH(request, { params }) {
       )
     }
 
+    if (!workspace.workspaceId || workspace.workspaceId === 'null') {
+      console.error('Invalid workspace ID:', workspace.workspaceId)
+      return NextResponse.json(
+        { error: 'Invalid workspace context' },
+        { status: 400 }
+      )
+    }
+
     const { id } = await params
     const body = await request.json()
+    console.log('Full request body:', JSON.stringify(body, null, 2))
+
     const { name, description, instructions, is_active, phoneNumbers, contacts } = body
+
+    console.log('Update scenario request:', {
+      id,
+      name,
+      description,
+      instructions,
+      is_active,
+      phoneNumbers,
+      contacts
+    })
 
     // Update scenario
     const updateData = {}
@@ -84,6 +109,13 @@ export async function PATCH(request, { params }) {
     if (description !== undefined) updateData.description = description
     if (instructions !== undefined) updateData.instructions = instructions
     if (is_active !== undefined) updateData.is_active = is_active
+
+    console.log('About to update scenario with:', {
+      updateData,
+      scenarioId: id,
+      workspaceId: workspace.workspaceId,
+      workspaceIdType: typeof workspace.workspaceId
+    })
 
     const { data: scenario, error: updateError } = await supabaseAdmin
       .from('scenarios')
@@ -109,16 +141,30 @@ export async function PATCH(request, { params }) {
         .delete()
         .eq('scenario_id', id)
 
-      // Add new assignments
-      if (phoneNumbers.length > 0) {
-        const phoneNumberInserts = phoneNumbers.map(phoneId => ({
+      // Add new assignments (filter out null/invalid values)
+      const validPhoneNumbers = phoneNumbers.filter(phoneId => {
+        // Filter out null, undefined, empty strings, and the string "null"
+        return phoneId && phoneId !== 'null' && phoneId !== '' && typeof phoneId === 'string'
+      })
+
+      console.log('Valid phone numbers after filtering:', validPhoneNumbers)
+
+      if (validPhoneNumbers.length > 0) {
+        const phoneNumberInserts = validPhoneNumbers.map(phoneId => ({
           scenario_id: id,
           phone_number_id: phoneId
         }))
 
-        await supabaseAdmin
+        console.log('Inserting phone number assignments:', phoneNumberInserts)
+
+        const { error: phoneInsertError } = await supabaseAdmin
           .from('scenario_phone_numbers')
           .insert(phoneNumberInserts)
+
+        if (phoneInsertError) {
+          console.error('Error inserting phone numbers:', phoneInsertError)
+          throw phoneInsertError
+        }
       }
     }
 
@@ -135,12 +181,19 @@ export async function PATCH(request, { params }) {
         const contactInserts = contacts.map(contact => ({
           scenario_id: id,
           recipient_phone: contact.phone,
-          contact_id: contact.id || null
+          contact_id: contact.id && contact.id !== 'null' && contact.id !== '' ? contact.id : null
         }))
 
-        await supabaseAdmin
+        console.log('Inserting contact restrictions:', contactInserts)
+
+        const { error: contactInsertError } = await supabaseAdmin
           .from('scenario_contacts')
           .insert(contactInserts)
+
+        if (contactInsertError) {
+          console.error('Error inserting contacts:', contactInsertError)
+          throw contactInsertError
+        }
       }
     }
 

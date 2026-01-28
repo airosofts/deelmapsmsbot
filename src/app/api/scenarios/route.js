@@ -103,9 +103,10 @@ export async function POST(request) {
       )
     }
 
-    // Add phone number assignments
-    if (phoneNumbers && phoneNumbers.length > 0) {
-      const phoneNumberInserts = phoneNumbers.map(phoneId => ({
+    // Add phone number assignments (filter out null/invalid values)
+    const validPhoneNumbers = phoneNumbers ? phoneNumbers.filter(phoneId => phoneId && phoneId !== 'null') : []
+    if (validPhoneNumbers.length > 0) {
+      const phoneNumberInserts = validPhoneNumbers.map(phoneId => ({
         scenario_id: scenario.id,
         phone_number_id: phoneId
       }))
@@ -124,7 +125,7 @@ export async function POST(request) {
       const contactInserts = contacts.map(contact => ({
         scenario_id: scenario.id,
         recipient_phone: contact.phone,
-        contact_id: contact.id || null
+        contact_id: contact.id && contact.id !== 'null' ? contact.id : null
       }))
 
       const { error: contactError } = await supabaseAdmin

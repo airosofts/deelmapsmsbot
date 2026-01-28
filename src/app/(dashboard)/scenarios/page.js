@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { apiGet, apiPost } from '@/lib/api-client'
+import { getCurrentUser } from '@/lib/auth'
 
 export default function ScenariosPage() {
   const [scenarios, setScenarios] = useState([])
@@ -84,12 +85,19 @@ export default function ScenariosPage() {
 
   const handleToggleActive = async (scenario) => {
     try {
+      const user = getCurrentUser()
+      if (!user) {
+        alert('Session expired. Please log in again.')
+        return
+      }
+
       const response = await fetch(`/api/scenarios/${scenario.id}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          'x-user-id': localStorage.getItem('userId'),
-          'x-workspace-id': localStorage.getItem('workspaceId')
+          'x-user-id': user.userId || '',
+          'x-workspace-id': user.workspaceId || '',
+          'x-messaging-profile-id': user.messagingProfileId || ''
         },
         body: JSON.stringify({
           is_active: !scenario.is_active
@@ -679,12 +687,20 @@ function EditScenarioModal({ scenario, phoneNumbers, contactLists, onClose, onSu
         contactsToSend = phones.map(phone => ({ phone, id: null }))
       }
 
+      const user = getCurrentUser()
+      if (!user) {
+        alert('Session expired. Please log in again.')
+        setIsEditModalOpen(false)
+        return
+      }
+
       const response = await fetch(`/api/scenarios/${scenario.id}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          'x-user-id': localStorage.getItem('userId'),
-          'x-workspace-id': localStorage.getItem('workspaceId')
+          'x-user-id': user.userId || '',
+          'x-workspace-id': user.workspaceId || '',
+          'x-messaging-profile-id': user.messagingProfileId || ''
         },
         body: JSON.stringify({
           name: formData.name,
