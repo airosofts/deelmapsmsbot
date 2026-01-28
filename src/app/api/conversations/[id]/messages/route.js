@@ -20,7 +20,8 @@ function normalizePhoneNumber(phone) {
 
 export async function POST(request, { params }) {
   try {
-    const campaignId = params.id
+    const { id } = await params
+    const campaignId = id
 
     // Get campaign details
     const { data: campaign, error: campaignError } = await supabaseAdmin
