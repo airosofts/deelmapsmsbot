@@ -4,19 +4,22 @@ import telnyx from '@/lib/telnyx'
 
 export async function findMatchingScenario(recipientNumber, senderNumber) {
   try {
-    // First, find the phone number record by phone number string
-    const { data: phoneRecord, error: phoneRecordError } = await supabaseAdmin
+    // First, find all phone number records with this phone number
+    // (there might be duplicates with different IDs)
+    const { data: phoneRecords, error: phoneRecordError } = await supabaseAdmin
       .from('phone_numbers')
       .select('id')
       .eq('phone_number', recipientNumber)
-      .single()
 
-    if (phoneRecordError || !phoneRecord) {
+    if (phoneRecordError || !phoneRecords || phoneRecords.length === 0) {
       console.log(`No phone number record found for ${recipientNumber}`)
       return null
     }
 
-    // Find scenarios assigned to this phone number ID
+    // Get all phone IDs for this number
+    const phoneIds = phoneRecords.map(p => p.id)
+
+    // Find scenarios assigned to any of these phone number IDs
     const { data: scenarioPhoneNumbers, error: phoneError } = await supabaseAdmin
       .from('scenario_phone_numbers')
       .select(`
@@ -29,7 +32,7 @@ export async function findMatchingScenario(recipientNumber, senderNumber) {
           is_active
         )
       `)
-      .eq('phone_number_id', phoneRecord.id)
+      .in('phone_number_id', phoneIds)
       .eq('scenarios.is_active', true)
 
     if (phoneError) {

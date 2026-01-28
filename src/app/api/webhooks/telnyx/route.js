@@ -26,8 +26,8 @@ async function getOrCreateConversation(fromNumber, toNumber) {
 
   try {
     // For inbound messages, the customer is the 'from' number
-    // So we look for conversation where phone_number matches the customer's number
-    // and from_number matches our business number
+    // Look for conversation matching BOTH phone_number (customer) AND from_number (our business number)
+    // This ensures each customer-business number pair has a separate conversation
     let { data: conversation, error } = await supabaseAdmin
       .from('conversations')
       .select('*')
@@ -35,48 +35,23 @@ async function getOrCreateConversation(fromNumber, toNumber) {
       .eq('from_number', normalizedTo)
       .single()
 
-    // If no exact match, try to find conversation with just phone number
+    // If no exact match, create new conversation
     if (error && error.code === 'PGRST116') {
-      let { data: existingConversation } = await supabaseAdmin
+      const { data: newConversation, error: createError } = await supabaseAdmin
         .from('conversations')
-        .select('*')
-        .eq('phone_number', normalizedFrom)
+        .insert({
+          phone_number: normalizedFrom, // Customer's number
+          from_number: normalizedTo,    // Our business number
+          name: null
+        })
+        .select()
         .single()
 
-      // If conversation exists but from_number is different or null, update it
-      if (existingConversation) {
-        const { data: updatedConversation, error: updateError } = await supabaseAdmin
-          .from('conversations')
-          .update({
-            from_number: normalizedTo
-          })
-          .eq('id', existingConversation.id)
-          .select()
-          .single()
-
-        if (updateError) {
-          console.error('Error updating conversation:', updateError)
-        }
-
-        conversation = updatedConversation || existingConversation
-      } else {
-        // Create new conversation if doesn't exist
-        const { data: newConversation, error: createError } = await supabaseAdmin
-          .from('conversations')
-          .insert({
-            phone_number: normalizedFrom, // Customer's number
-            from_number: normalizedTo,    // Our business number
-            name: null
-          })
-          .select()
-          .single()
-
-        if (createError) {
-          throw createError
-        }
-
-        conversation = newConversation
+      if (createError) {
+        throw createError
       }
+
+      conversation = newConversation
     } else if (error) {
       throw error
     }
