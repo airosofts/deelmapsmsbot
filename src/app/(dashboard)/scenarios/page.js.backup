@@ -3,9 +3,6 @@
 import { useState, useEffect } from 'react'
 import { apiGet, apiPost } from '@/lib/api-client'
 import { getCurrentUser } from '@/lib/auth'
-import FollowupSettings from '@/components/scenarios/FollowupSettings'
-import FollowupStagesModal from '@/components/scenarios/FollowupStagesModal'
-import AnalyticsModal from '@/components/scenarios/AnalyticsModal'
 
 export default function ScenariosPage() {
   const [scenarios, setScenarios] = useState([])
@@ -17,10 +14,6 @@ export default function ScenariosPage() {
   const [editingScenario, setEditingScenario] = useState(null)
   const [showExecutionsModal, setShowExecutionsModal] = useState(false)
   const [selectedScenarioExecutions, setSelectedScenarioExecutions] = useState(null)
-  const [showFollowupStagesModal, setShowFollowupStagesModal] = useState(false)
-  const [selectedScenarioForFollowup, setSelectedScenarioForFollowup] = useState(null)
-  const [showAnalyticsModal, setShowAnalyticsModal] = useState(false)
-  const [selectedScenarioForAnalytics, setSelectedScenarioForAnalytics] = useState(null)
 
   useEffect(() => {
     fetchScenarios()
@@ -196,14 +189,6 @@ export default function ScenariosPage() {
                 onDelete={handleDeleteScenario}
                 onToggleActive={handleToggleActive}
                 onViewExecutions={viewExecutions}
-                onManageFollowups={(s) => {
-                  setSelectedScenarioForFollowup(s)
-                  setShowFollowupStagesModal(true)
-                }}
-                onViewAnalytics={(s) => {
-                  setSelectedScenarioForAnalytics(s)
-                  setShowAnalyticsModal(true)
-                }}
               />
             ))}
           </div>
@@ -251,36 +236,11 @@ export default function ScenariosPage() {
           }}
         />
       )}
-
-      {/* Follow-up Stages Modal */}
-      {showFollowupStagesModal && selectedScenarioForFollowup && (
-        <FollowupStagesModal
-          scenario={selectedScenarioForFollowup}
-          onClose={() => {
-            setShowFollowupStagesModal(false)
-            setSelectedScenarioForFollowup(null)
-          }}
-          onSuccess={() => {
-            fetchScenarios()
-          }}
-        />
-      )}
-
-      {/* Analytics Modal */}
-      {showAnalyticsModal && selectedScenarioForAnalytics && (
-        <AnalyticsModal
-          scenario={selectedScenarioForAnalytics}
-          onClose={() => {
-            setShowAnalyticsModal(false)
-            setSelectedScenarioForAnalytics(null)
-          }}
-        />
-      )}
     </div>
   )
 }
 
-function ScenarioCard({ scenario, onEdit, onDelete, onToggleActive, onViewExecutions, onManageFollowups, onViewAnalytics }) {
+function ScenarioCard({ scenario, onEdit, onDelete, onToggleActive, onViewExecutions }) {
   const phoneCount = scenario.scenario_phone_numbers?.length || 0
   const contactCount = scenario.scenario_contacts?.length || 0
 
@@ -325,12 +285,6 @@ function ScenarioCard({ scenario, onEdit, onDelete, onToggleActive, onViewExecut
               <span>Restricted to {contactCount} specific {contactCount === 1 ? 'sender' : 'senders'}</span>
             </div>
           )}
-          {scenario.enable_followups && (
-            <div className="flex items-center gap-2 text-blue-600">
-              <i className="fas fa-clock text-blue-600"></i>
-              <span>Follow-ups enabled (max {scenario.max_followup_attempts || 3} attempts)</span>
-            </div>
-          )}
         </div>
 
         {/* Actions */}
@@ -351,22 +305,6 @@ function ScenarioCard({ scenario, onEdit, onDelete, onToggleActive, onViewExecut
           >
             <i className="fas fa-history mr-2"></i>
             Logs
-          </button>
-          {scenario.enable_followups && (
-            <button
-              onClick={() => onManageFollowups(scenario)}
-              className="px-4 py-2 bg-purple-100 text-purple-700 rounded-lg font-medium hover:bg-purple-200 transition-colors"
-            >
-              <i className="fas fa-layer-group mr-2"></i>
-              Manage Follow-ups
-            </button>
-          )}
-          <button
-            onClick={() => onViewAnalytics(scenario)}
-            className="px-4 py-2 bg-pink-100 text-pink-700 rounded-lg font-medium hover:bg-pink-200 transition-colors"
-          >
-            <i className="fas fa-chart-line mr-2"></i>
-            Analytics
           </button>
           <button
             onClick={() => onEdit(scenario)}
@@ -396,14 +334,7 @@ function CreateScenarioModal({ phoneNumbers, contactLists, onClose, onSuccess })
     phoneNumbers: [],
     contactRestrictionType: 'none', // 'none', 'contact_lists', 'manual'
     selectedContactLists: [],
-    manualPhoneNumbers: '',
-    enable_followups: false,
-    max_followup_attempts: 3,
-    enable_business_hours: false,
-    business_hours_start: '09:00',
-    business_hours_end: '18:00',
-    business_hours_timezone: 'America/New_York',
-    auto_stop_keywords: ['STOP', 'UNSUBSCRIBE', 'CANCEL', 'END', 'QUIT']
+    manualPhoneNumbers: ''
   })
   const [loading, setLoading] = useState(false)
   const [contacts, setContacts] = useState([])
@@ -458,14 +389,7 @@ function CreateScenarioModal({ phoneNumbers, contactLists, onClose, onSuccess })
         description: formData.description,
         instructions: formData.instructions,
         phoneNumbers: formData.phoneNumbers,
-        contacts: contactsToSend,
-        enable_followups: formData.enable_followups,
-        max_followup_attempts: formData.max_followup_attempts,
-        enable_business_hours: formData.enable_business_hours,
-        business_hours_start: formData.business_hours_start + ':00',
-        business_hours_end: formData.business_hours_end + ':00',
-        business_hours_timezone: formData.business_hours_timezone,
-        auto_stop_keywords: formData.auto_stop_keywords
+        contacts: contactsToSend
       })
 
       const data = await response.json()
@@ -578,9 +502,6 @@ function CreateScenarioModal({ phoneNumbers, contactLists, onClose, onSuccess })
               This scenario will trigger when SMS is received on these numbers
             </p>
           </div>
-
-          {/* Follow-up Settings */}
-          <FollowupSettings formData={formData} setFormData={setFormData} />
 
           {/* Contact Restrictions */}
           <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
@@ -718,14 +639,7 @@ function EditScenarioModal({ scenario, phoneNumbers, contactLists, onClose, onSu
     phoneNumbers: scenario.scenario_phone_numbers?.map(spn => spn.phone_number_id) || [],
     contactRestrictionType: scenario.scenario_contacts?.length > 0 ? 'manual' : 'none',
     selectedContactLists: [],
-    manualPhoneNumbers: scenario.scenario_contacts?.map(sc => sc.recipient_phone).join('\n') || '',
-    enable_followups: scenario.enable_followups || false,
-    max_followup_attempts: scenario.max_followup_attempts || 3,
-    enable_business_hours: scenario.enable_business_hours || false,
-    business_hours_start: scenario.business_hours_start?.substring(0, 5) || '09:00',
-    business_hours_end: scenario.business_hours_end?.substring(0, 5) || '18:00',
-    business_hours_timezone: scenario.business_hours_timezone || 'America/New_York',
-    auto_stop_keywords: scenario.auto_stop_keywords || ['STOP', 'UNSUBSCRIBE', 'CANCEL', 'END', 'QUIT']
+    manualPhoneNumbers: scenario.scenario_contacts?.map(sc => sc.recipient_phone).join('\n') || ''
   })
   const [loading, setLoading] = useState(false)
   const [contacts, setContacts] = useState([])
@@ -793,14 +707,7 @@ function EditScenarioModal({ scenario, phoneNumbers, contactLists, onClose, onSu
           description: formData.description,
           instructions: formData.instructions,
           phoneNumbers: formData.phoneNumbers,
-          contacts: contactsToSend,
-          enable_followups: formData.enable_followups,
-          max_followup_attempts: formData.max_followup_attempts,
-          enable_business_hours: formData.enable_business_hours,
-          business_hours_start: formData.business_hours_start + ':00',
-          business_hours_end: formData.business_hours_end + ':00',
-          business_hours_timezone: formData.business_hours_timezone,
-          auto_stop_keywords: formData.auto_stop_keywords
+          contacts: contactsToSend
         })
       })
 
@@ -898,9 +805,6 @@ function EditScenarioModal({ scenario, phoneNumbers, contactLists, onClose, onSu
               ))}
             </div>
           </div>
-
-          {/* Follow-up Settings */}
-          <FollowupSettings formData={formData} setFormData={setFormData} />
 
           {/* Contact Restrictions */}
           <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">

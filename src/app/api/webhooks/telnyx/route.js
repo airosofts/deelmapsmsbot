@@ -4,6 +4,11 @@ import { NextResponse } from 'next/server'
 import telnyx from '@/lib/telnyx'
 import { supabaseAdmin } from '@/lib/supabase-server'
 import { findMatchingScenario, executeScenario } from '@/lib/scenario-service'
+import {
+  containsStopKeyword,
+  stopFollowups,
+  updateFollowupState
+} from '@/lib/followup-service'
 
 function normalizePhoneNumber(phone) {
   if (!phone) return null
@@ -167,7 +172,7 @@ async function handleIncomingMessage(event) {
 
     console.log('Inbound message saved successfully:', messageRecord.id)
 
-    // Check for matching scenario and execute it
+    // Check for matching scenario
     const scenario = await findMatchingScenario(
       normalizePhoneNumber(toNumber),   // recipient (our number)
       normalizePhoneNumber(fromNumber)  // sender (their number)
@@ -175,6 +180,53 @@ async function handleIncomingMessage(event) {
 
     if (scenario) {
       console.log(`Found matching scenario: ${scenario.name} (ID: ${scenario.id})`)
+
+      // Check if manual override is active
+      if (conversation.manual_override) {
+        console.log(`Manual override active for conversation ${conversation.id} - skipping AI response`)
+        return
+      }
+
+      // Check for STOP keywords
+      if (containsStopKeyword(messageBody, scenario.auto_stop_keywords)) {
+        console.log(`STOP keyword detected in message - stopping follow-ups`)
+
+        // Stop follow-ups for this conversation
+        await stopFollowups(conversation.id, scenario.id)
+
+        // Optionally send confirmation message
+        const confirmMessage = "You have been unsubscribed from automated messages. Reply START to opt back in."
+        await supabaseAdmin
+          .from('messages')
+          .insert({
+            conversation_id: conversation.id,
+            direction: 'outbound',
+            from_number: normalizePhoneNumber(toNumber),
+            to_number: normalizePhoneNumber(fromNumber),
+            body: confirmMessage,
+            status: 'queued'
+          })
+
+        // Send via Telnyx
+        try {
+          await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/sms/send`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              to: normalizePhoneNumber(fromNumber),
+              from: normalizePhoneNumber(toNumber),
+              message: confirmMessage
+            })
+          })
+        } catch (sendError) {
+          console.error('Error sending STOP confirmation:', sendError)
+        }
+
+        return
+      }
+
+      // Update follow-up state (customer sent a message)
+      await updateFollowupState(conversation.id, scenario.id, 'customer')
 
       // Execute scenario asynchronously (don't await to avoid blocking webhook)
       executeScenario(scenario, messageRecord, conversation)

@@ -1,6 +1,13 @@
 import { supabaseAdmin } from '@/lib/supabase-server'
 import { getAIResponse } from '@/lib/openai'
 import telnyx from '@/lib/telnyx'
+import {
+  isWithinBusinessHours,
+  updateFollowupState,
+  scheduleNextFollowup,
+  addConversationLabel,
+  toggleManualOverride
+} from '@/lib/followup-service'
 
 export async function findMatchingScenario(recipientNumber, senderNumber) {
   try {
@@ -90,6 +97,14 @@ export async function executeScenario(scenario, message, conversation) {
   }
 
   try {
+    // Check business hours if enabled
+    if (!isWithinBusinessHours(scenario)) {
+      console.log(`Outside business hours for scenario ${scenario.id} - skipping execution`)
+      executionLog.execution_status = 'skipped_business_hours'
+      executionLog.processing_time_ms = Date.now() - startTime
+      await logScenarioExecution(executionLog)
+      return { success: true, skipped: true, reason: 'business_hours' }
+    }
     // Get conversation history
     const { data: messages, error: messagesError } = await supabaseAdmin
       .from('messages')
@@ -119,8 +134,9 @@ IMPORTANT RULES:
 1. Follow the scenario instructions strictly
 2. Keep responses concise and natural
 3. If the scenario says to stop responding, return exactly: "STOP_SCENARIO"
-4. Never mention you are an AI or bot
-5. Stay in character based on the scenario
+4. If you cannot help the customer or need human assistance (e.g., unable to meet their requirements after multiple attempts), return exactly: "NEED_HUMAN"
+5. Never mention you are an AI or bot
+6. Stay in character based on the scenario
 
 Current conversation:`
 
@@ -149,6 +165,44 @@ Current conversation:`
       return { success: true, stopped: true }
     }
 
+    // Check if AI needs human intervention
+    if (aiResult.response.includes('NEED_HUMAN') || aiResult.response.includes('HUMAN_NEEDED')) {
+      console.log(`AI requested human intervention for conversation ${conversation.id}`)
+
+      // Add "Need human" label to the conversation
+      await addConversationLabel(conversation.id, 'Need human')
+
+      // Set manual override to stop AI from responding further
+      await toggleManualOverride(conversation.id, true)
+
+      // Send transitional message to customer
+      const humanNeededMessage = "Thank you for your patience. One of our team members will be with you shortly to assist with your request."
+      await telnyx.sendMessage(
+        message.to_number, // from (our number)
+        message.from_number, // to (their number)
+        humanNeededMessage
+      )
+
+      // Create message record for the transitional message
+      await supabaseAdmin
+        .from('messages')
+        .insert({
+          conversation_id: conversation.id,
+          direction: 'outbound',
+          from_number: message.to_number,
+          to_number: message.from_number,
+          body: humanNeededMessage,
+          status: 'sent'
+        })
+
+      // Log execution as human_needed
+      executionLog.execution_status = 'human_needed'
+      executionLog.processing_time_ms = Date.now() - startTime
+      await logScenarioExecution(executionLog)
+
+      return { success: true, humanNeeded: true }
+    }
+
     // Send reply via Telnyx
     const sendResult = await telnyx.sendMessage(
       message.to_number, // from (our number)
@@ -164,7 +218,7 @@ Current conversation:`
       return { success: false, error: sendResult.error }
     }
 
-    // Create message record
+    // Create message record with AI tracking
     const { data: replyMessage, error: replyError } = await supabaseAdmin
       .from('messages')
       .insert({
@@ -174,7 +228,10 @@ Current conversation:`
         from_number: message.to_number,
         to_number: message.from_number,
         body: aiResult.response,
-        status: 'sent'
+        status: 'sent',
+        tokens_used: aiResult.tokensUsed,
+        processing_time_ms: aiResult.processingTime,
+        ai_model: aiResult.model
       })
       .select()
       .single()
@@ -190,6 +247,12 @@ Current conversation:`
     executionLog.processing_time_ms = Date.now() - startTime
 
     await logScenarioExecution(executionLog)
+
+    // Update follow-up state (AI sent a message)
+    await updateFollowupState(conversation.id, scenario.id, 'ai')
+
+    // Schedule next follow-up if enabled
+    await scheduleNextFollowup(conversation.id, scenario.id)
 
     return {
       success: true,

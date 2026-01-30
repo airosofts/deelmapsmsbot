@@ -91,7 +91,21 @@ export async function PATCH(request, { params }) {
     const body = await request.json()
     console.log('Full request body:', JSON.stringify(body, null, 2))
 
-    const { name, description, instructions, is_active, phoneNumbers, contacts } = body
+    const {
+      name,
+      description,
+      instructions,
+      is_active,
+      phoneNumbers,
+      contacts,
+      enable_followups,
+      max_followup_attempts,
+      business_hours_start,
+      business_hours_end,
+      business_hours_timezone,
+      auto_stop_keywords,
+      enable_business_hours
+    } = body
 
     console.log('Update scenario request:', {
       id,
@@ -100,7 +114,9 @@ export async function PATCH(request, { params }) {
       instructions,
       is_active,
       phoneNumbers,
-      contacts
+      contacts,
+      enable_followups,
+      max_followup_attempts
     })
 
     // Update scenario
@@ -109,6 +125,13 @@ export async function PATCH(request, { params }) {
     if (description !== undefined) updateData.description = description
     if (instructions !== undefined) updateData.instructions = instructions
     if (is_active !== undefined) updateData.is_active = is_active
+    if (enable_followups !== undefined) updateData.enable_followups = enable_followups
+    if (max_followup_attempts !== undefined) updateData.max_followup_attempts = max_followup_attempts
+    if (business_hours_start !== undefined) updateData.business_hours_start = business_hours_start
+    if (business_hours_end !== undefined) updateData.business_hours_end = business_hours_end
+    if (business_hours_timezone !== undefined) updateData.business_hours_timezone = business_hours_timezone
+    if (auto_stop_keywords !== undefined) updateData.auto_stop_keywords = auto_stop_keywords
+    if (enable_business_hours !== undefined) updateData.enable_business_hours = enable_business_hours
 
     console.log('About to update scenario with:', {
       updateData,
