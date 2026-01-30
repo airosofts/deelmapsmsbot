@@ -195,6 +195,8 @@ export default function ConversationList({
           const canCall = callHook && callHook.selectedCallerNumber && !callHook.isCallActive
           const isPinned = conversation.pinned
 
+          const hasManualOverride = conversation.manual_override
+
           return (
             <div
               key={conversation.id}
@@ -205,7 +207,7 @@ export default function ConversationList({
               }}
               className={`cursor-pointer border-b border-gray-100 hover:bg-gray-50 transition-none ${
                 isSelected ? 'bg-gray-50' : ''
-              }`}
+              } ${hasManualOverride ? 'border-l-4 border-l-orange-500' : ''}`}
               style={{ willChange: 'background-color' }}
             >
               <div className="p-3 flex items-center gap-3">
@@ -235,6 +237,12 @@ export default function ConversationList({
                       {isPinned && (
                         <i className="fas fa-thumbtack text-gray-400 text-xs flex-shrink-0"></i>
                       )}
+                      {conversation.manual_override && (
+                        <span className="flex items-center gap-1 bg-orange-100 text-orange-700 text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0">
+                          <i className="fas fa-hand-paper text-[10px]"></i>
+                          <span>Manual</span>
+                        </span>
+                      )}
                     </div>
                     <span className="text-xs text-gray-500 flex-shrink-0">
                       {formatTime(conversation.lastMessage?.created_at)}
@@ -244,6 +252,28 @@ export default function ConversationList({
                     {conversation.lastMessage?.direction === 'outbound' && 'You: '}
                     {truncateMessage(conversation.lastMessage?.body)}
                   </p>
+                  {/* Labels */}
+                  {conversation.labels && conversation.labels.length > 0 && (
+                    <div className="flex items-center gap-1 mt-1 flex-wrap">
+                      {conversation.labels.map((label, idx) => (
+                        <span
+                          key={idx}
+                          className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium ${
+                            label.toLowerCase().includes('human') || label.toLowerCase().includes('need')
+                              ? 'bg-red-100 text-red-700'
+                              : label.toLowerCase().includes('urgent')
+                              ? 'bg-yellow-100 text-yellow-700'
+                              : label.toLowerCase().includes('vip')
+                              ? 'bg-purple-100 text-purple-700'
+                              : 'bg-blue-100 text-blue-700'
+                          }`}
+                        >
+                          <i className="fas fa-tag text-[10px]"></i>
+                          {label}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Call button (hover only on desktop, always on mobile) */}
